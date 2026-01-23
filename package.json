@@ -1,0 +1,31 @@
+{
+  "name": "mcp-mr-diagnosis",
+  "version": "1.0.0",
+  "description": "MCP service for diagnosing GitLab Merge Request pipeline status",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "node dist/test.js"
+  },
+  "keywords": [
+    "mcp",
+    "gitlab",
+    "merge-request",
+    "diagnosis",
+    "jenkins"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  }
+}
+

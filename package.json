@@ -1,11 +1,11 @@
 {
-  "name": "mcp-mr-diagnosis",
-  "version": "1.0.0",
+  "name": "gitlab-mr-diagnosis-mcp",
+  "version": "1.0.3",
   "description": "MCP service for diagnosing GitLab Merge Request pipeline status",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "mcp-mr-diagnosis": "dist/index.js"
+    "gitlab-mr-diagnosis-mcp": "dist/index.js"
   },
   "files": [
     "dist"

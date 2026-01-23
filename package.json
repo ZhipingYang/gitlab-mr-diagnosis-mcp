@@ -4,21 +4,37 @@
   "description": "MCP service for diagnosing GitLab Merge Request pipeline status",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "mcp-mr-diagnosis": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "node dist/test.js"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
     "gitlab",
     "merge-request",
     "diagnosis",
-    "jenkins"
+    "jenkins",
+    "ai-agent",
+    "model-context-protocol"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZhipingYang/gitlab-mr-diagnosis-mcp.git"
+  },
+  "homepage": "https://github.com/ZhipingYang/gitlab-mr-diagnosis-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ZhipingYang/gitlab-mr-diagnosis-mcp/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
@@ -26,6 +42,9 @@
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "ts-node": "^10.9.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
 

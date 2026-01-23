@@ -4,17 +4,17 @@
  */
 
 // ============================================================
-// 默认配置
+// 默认配置 (可通过环境变量覆盖)
 // ============================================================
 
 /** GitLab 默认基础 URL */
-export const DEFAULT_GITLAB_BASE_URL = 'https://git.ringcentral.com';
+export const DEFAULT_GITLAB_BASE_URL = process.env.GITLAB_BASE_URL || 'https://git.ringcentral.com';
 
 /** Jenkins 基础 URL */
-export const JENKINS_BASE_URL = 'https://jenkins-commonci.int.rclabenv.com';
+export const JENKINS_BASE_URL = process.env.JENKINS_BASE_URL || '';
 
 /** Jenkins Job 路径 */
-export const JENKINS_JOB_PATH = '/job/CommonCI-Jupiter-Web-MR-Auto-Generate';
+export const JENKINS_JOB_PATH = process.env.JENKINS_JOB_PATH || '';
 
 /** 默认 Diff Coverage 阈值 (%) */
 export const DEFAULT_DIFF_COVERAGE_GATE = 90;

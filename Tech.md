@@ -79,18 +79,26 @@ MR URL
    MRDiagnosisResult
 ```
 
+## 环境变量配置
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `GITLAB_TOKEN` | 是 | GitLab Private Token |
+| `GITLAB_BASE_URL` | 否 | GitLab 服务器地址 |
+| `JENKINS_BASE_URL` | 否 | Jenkins 服务器地址 |
+| `DIFF_COVERAGE_GATE` | 否 | Diff Coverage 阈值 (默认 90) |
+
 ## 常量配置 (`constants.ts`)
 
 集中管理所有常量，便于维护：
 
-| 常量 | 值 | 说明 |
-|------|-----|------|
+| 常量 | 默认值 | 说明 |
+|------|--------|------|
 | `DEFAULT_DIFF_COVERAGE_GATE` | 90 | Diff Coverage 阈值 |
 | `FAILED_TEST_SEARCH_RANGE` | 50000 | 失败测试搜索范围 |
 | `TEST_CONTEXT_RANGE` | 500 | 测试上下文范围 |
 | `MAX_ERROR_MESSAGE_LENGTH` | 200 | 错误消息最大长度 |
 | `BUILD_ONLY_MAX_STAGES` | 5 | build-only 最大阶段数 |
-| `BATCH_REQUEST_DELAY` | 500 | 批量请求延迟 (ms) |
 
 ## 构建类型判断
 
@@ -114,7 +122,7 @@ REGEX_FAIL_PATTERN = /FAIL(?:\s+UT)?\s+(project\/[^\s]+\.test\.[tj]sx?)/g
 REGEX_TEST_NAME = /(?:\[[\d\-T:.Z]+\]\s*)?●\s+([^\n]+)/g
 
 // Diff Coverage 统计
-REGEX_OVERALL_DIFF_COVERAGE = /Overall Diff Coverage Statistics\*{0,2}[:\s]+diffLines[:\s]*(\d+)...
+REGEX_OVERALL_DIFF_COVERAGE = /Overall Diff Coverage Statistics.../i
 ```
 
 ## 配置加载 (`utils/config.ts`)

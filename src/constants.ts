@@ -75,7 +75,7 @@ export const REGEX_UNCOVERED_FILE = /^\s*(project\/[^\s|]+)\s*\|\s*([\d.]+)%?\s*
 /** 匹配未覆盖的行号列表 (例如: "Uncovered lines: 10, 15-20, 30") */
 export const REGEX_UNCOVERED_LINES = /Uncovered\s*(?:lines|Lines)[:\s]*([\d,\s\-]+)/i;
 
-/** 匹配 Jenkins 构建 URL */
+/** 匹配 Jenkins 构建 URL (支持 SUCCESS/FAILURE 前缀) */
 export const REGEX_JENKINS_BUILD_URL = /\[jenkins-CommonCI-Jupiter-Web-MR-Auto-Generate-(\d+)\]\((https:\/\/[^\)]+)\)/;
 
 /** 匹配 GitLab MR URL 格式 1 */

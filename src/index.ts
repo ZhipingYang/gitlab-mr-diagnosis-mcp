@@ -106,6 +106,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['build_url'],
         },
       },
+      {
+        name: 'get_coverage_report',
+        description: `获取 Jenkins 构建的 Coverage Report 数据(从 HTML artifact 解析)。
+
+功能:
+1. 从 artifact/coverage/Overall-Diff-Coverage-Report.html 获取数据
+2. 解析 Diff Coverage 和 Overall Coverage 统计
+3. 提取未达标的文件列表
+4. 可选返回原始 HTML 用于调试
+
+返回信息包括:
+- Diff Coverage 和 Overall Coverage 百分比
+- 未达标文件列表(文件路径 + 覆盖率)
+- Coverage 是否达标
+- Coverage Report 的 artifact URL`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            build_url: {
+              type: 'string',
+              description: 'Jenkins 构建 URL (例如: https://jenkins.../job/xxx/12345/)',
+            },
+            coverage_threshold: {
+              type: 'number',
+              description: 'Coverage 阈值 (默认 90)',
+            },
+            include_html: {
+              type: 'boolean',
+              description: '是否返回原始 HTML (用于调试,默认 false)',
+            },
+          },
+          required: ['build_url'],
+        },
+      },
     ],
   };
 });
@@ -225,17 +259,106 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             result += `  - ${t.testFile}\n`;
           });
 
-          if (analysis.coverageStats.length > 0) {
-            result += '\n覆盖率:\n';
-            analysis.coverageStats.forEach(s => {
-              result += `  ${s.type}: ${s.diffCoverage}% diff coverage\n`;
-            });
+          if (analysis.testSummary) {
+            result += '\n测试摘要:\n';
+            result += `  通过: ${analysis.testSummary.passed}\n`;
+            result += `  失败: ${analysis.testSummary.failed}\n`;
+            result += `  跳过: ${analysis.testSummary.skipped}\n`;
           }
+
+          result += '\n⚠️ 注意: Coverage 数据现在从 HTML Report 获取，请使用 get_coverage_report 工具\n';
         }
 
         return {
           content: [{ type: 'text', text: result }],
         };
+      }
+
+      case 'get_coverage_report': {
+        const buildUrl = args?.build_url as string;
+        const coverageThreshold = (args?.coverage_threshold as number) || DEFAULT_CONFIG.diffCoverageGate;
+        const includeHtml = (args?.include_html as boolean) || false;
+
+        const { JenkinsService } = await import('./services/jenkins');
+        const jenkins = new JenkinsService();
+
+        try {
+          const cleanUrl = buildUrl
+            .replace('/display/redirect', '')
+            .replace('/console', '')
+            .replace('/consoleText', '')
+            .replace(/\/$/, '');
+          const artifactUrl = `${cleanUrl}/artifact/coverage/Overall-Diff-Coverage-Report.html`;
+
+          const coverageData = await jenkins.getCoverageData(buildUrl, coverageThreshold);
+
+          let result = '📊 Coverage Report 数据\n';
+          result += '═══════════════════════════════════════════════════════════════\n\n';
+          result += `🔗 Artifact URL: ${artifactUrl}\n`;
+          result += `📏 Coverage 阈值: ${coverageThreshold}%\n\n`;
+
+          // 统计数据
+          if (coverageData.stats) {
+            result += '📈 Coverage 统计:\n';
+            result += `  Diff Coverage:    ${coverageData.stats.diffCoverage.toFixed(2)}% ${coverageData.isDiffCoveragePassed ? '✅' : '❌'}\n`;
+            result += `  Overall Coverage: ${coverageData.stats.overallCoverage.toFixed(2)}%\n\n`;
+          } else {
+            result += '⚠️ 无法从 HTML 中提取统计数据\n\n';
+          }
+
+          // 未达标文件
+          if (coverageData.uncoveredFiles.length > 0) {
+            result += `📁 Diff Coverage 未达标文件 (${coverageData.uncoveredFiles.length} 个):\n`;
+            coverageData.uncoveredFiles.forEach((file, i) => {
+              result += `  ${i + 1}. ${file.filePath}\n`;
+              result += `     Diff Coverage: ${file.coverage.toFixed(2)}%\n`;
+            });
+          } else {
+            result += '✅ 所有文件的 Diff Coverage 都达标!\n';
+          }
+
+          result += '\n═══════════════════════════════════════════════════════════════\n';
+
+          const content: any[] = [{ type: 'text', text: result }];
+
+          // 添加 JSON 数据
+          content.push({
+            type: 'text',
+            text: '\n\n---\n📦 原始数据 (JSON):\n' + JSON.stringify({
+              artifactUrl,
+              coverageThreshold,
+              stats: coverageData.stats,
+              uncoveredFiles: coverageData.uncoveredFiles,
+              isDiffCoveragePassed: coverageData.isDiffCoveragePassed,
+            }, null, 2),
+          });
+
+          // 如果需要，添加原始 HTML
+          if (includeHtml) {
+            try {
+              const html = await jenkins.getCoverageReportHtml(buildUrl);
+              content.push({
+                type: 'text',
+                text: `\n\n---\n📄 原始 HTML (前 2000 字符):\n${html.substring(0, 2000)}...`,
+              });
+            } catch (error) {
+              content.push({
+                type: 'text',
+                text: `\n\n---\n⚠️ 无法获取原始 HTML: ${error instanceof Error ? error.message : String(error)}`,
+              });
+            }
+          }
+
+          return { content };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ 获取 Coverage Report 失败:\n${errorMsg}\n\n💡 请检查:\n1. 构建 URL 是否正确\n2. Coverage artifact 是否存在\n3. 网络连接是否正常`,
+            }],
+          };
+        }
       }
 
       default:

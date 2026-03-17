@@ -98,7 +98,7 @@ export class MRDiagnosisTool {
     result.buildInfo = buildInfo;
     result.stages = latestBuildComment.stages || [];
 
-    // Step 4: 获取 Console Log
+    // Step 4: 获取 Console Log 并解析 UT 失败
     let consoleLog = '';
     try {
       consoleLog = await this.jenkinsService.getConsoleLog(
@@ -108,30 +108,66 @@ export class MRDiagnosisTool {
       result.recommendations.push(`无法获取 Console Log: ${error}`);
     }
 
-    // Step 5: 解析 Console Log
+    // Step 5: 解析 Console Log（只解析 UT 失败）
     if (consoleLog) {
-      const logAnalysis = this.consoleLogParser.parseAll(
-        consoleLog,
-        this.config.diffCoverageGate
-      );
-
+      const logAnalysis = this.consoleLogParser.parseAll(consoleLog);
       result.failedTests = logAnalysis.failedTests;
-      result.coverageStats = logAnalysis.coverageStats;
-      result.isDiffCoveragePassed = logAnalysis.isDiffCoveragePassed;
     }
 
-    // Step 6: 如果 Diff Coverage 未达标，获取未覆盖的文件列表
-    if (!result.isDiffCoveragePassed && buildInfo.consoleLogUrl) {
+    // Step 6: 从 artifact HTML 获取 Coverage 数据（统计 + 文件列表）
+    if (buildInfo.consoleLogUrl) {
       try {
         // 从 consoleLogUrl 提取 buildUrl
         const buildUrl = buildInfo.consoleLogUrl.replace('/consoleText', '');
-        result.uncoveredFiles = await this.jenkinsService.getUncoveredFiles(
+        const artifactUrl = `${buildUrl}/artifact/coverage/Overall-Diff-Coverage-Report.html`;
+
+        const coverageData = await this.jenkinsService.getCoverageData(
           buildUrl,
           this.config.diffCoverageGate
         );
+
+        // 更新 Coverage 统计
+        if (coverageData.stats) {
+          result.coverageStats = [{
+            type: 'overall',
+            diffLines: 0,
+            coveredDiffLines: 0,
+            uncoveredDiffLines: 0,
+            diffCoverage: coverageData.stats.diffCoverage,
+            overallCoverage: coverageData.stats.overallCoverage,
+          }];
+        } else {
+          // 如果没有统计数据，添加警告
+          result.recommendations.push(
+            '⚠️ 无法从 Coverage Report 中提取统计数据'
+          );
+          result.recommendations.push(
+            `💡 请手动查看: ${artifactUrl}`
+          );
+        }
+
+        // 更新未覆盖文件列表
+        result.uncoveredFiles = coverageData.uncoveredFiles;
+        result.isDiffCoveragePassed = coverageData.isDiffCoveragePassed;
       } catch (error) {
-        // 如果获取失败，不影响其他诊断结果
-        console.error('Failed to get uncovered files:', error);
+        // 如果获取失败，添加详细错误信息到建议中
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const buildUrl = buildInfo.consoleLogUrl.replace('/consoleText', '');
+        const artifactUrl = `${buildUrl}/artifact/coverage/Overall-Diff-Coverage-Report.html`;
+
+        result.recommendations.push(
+          `⚠️ 无法获取 Coverage 详细数据: ${errorMsg}`
+        );
+        result.recommendations.push(
+          `💡 请手动查看 Coverage Report: ${artifactUrl}`
+        );
+
+        // 记录错误日志（用于调试）
+        console.error('[Coverage] Failed to get coverage data:', {
+          buildUrl,
+          artifactUrl,
+          error: errorMsg,
+        });
       }
     }
 

@@ -68,9 +68,9 @@ npm run build
 
 ## 🛠️ MCP 工具
 
-服务提供以下 3 个工具：
+服务提供以下 4 个工具：
 
-### 1. `diagnose_mr` - 完整诊断
+### 1. `diagnose_mr` - 完整诊断 ⭐
 
 自动诊断 MR 构建状态，返回详细的诊断报告。
 
@@ -88,11 +88,43 @@ npm run build
 - 构建状态和构建号
 - 各阶段执行状态 (checkout, tsc, ut, diffcoverage 等)
 - 失败的测试用例列表（含错误类型和错误消息）
-- Diff Coverage 统计（变更行数、已覆盖、未覆盖）
+- Diff Coverage 统计（从 HTML artifact 解析）
 - 未达标文件列表
-- 修复建议
+- 修复建议（包含 Coverage 解析错误提示）
 
-### 2. `get_mr_comments` - 获取评论
+**新增功能** (v1.0.4):
+- ✅ Coverage 解析失败时提供详细错误信息
+- ✅ 提供 Coverage Report 的直接链接
+- ✅ 区分 "解析失败" 和 "Coverage 为 0%"
+
+### 2. `get_coverage_report` - 获取 Coverage 数据 🆕
+
+获取 Jenkins 构建的 Coverage Report 数据（从 HTML artifact 解析）。
+
+```json
+{
+  "name": "get_coverage_report",
+  "arguments": {
+    "build_url": "https://jenkins.example.com/job/your-job/123/",
+    "coverage_threshold": 90,
+    "include_html": false
+  }
+}
+```
+
+**返回内容**：
+- Diff Coverage 和 Overall Coverage 百分比
+- 未达标文件列表（文件路径 + 覆盖率）
+- Coverage 是否达标
+- Coverage Report 的 artifact URL
+- 可选：原始 HTML（用于调试）
+
+**使用场景**：
+- 单独查看 Coverage 数据
+- 调试 Coverage 解析问题
+- 获取详细的文件级别 Coverage 信息
+
+### 3. `get_mr_comments` - 获取评论
 
 获取 MR 的所有评论（原始 JSON 数据）。
 
@@ -106,7 +138,7 @@ npm run build
 }
 ```
 
-### 3. `get_console_log` - 获取 Jenkins 日志
+### 4. `get_console_log` - 获取 Jenkins 日志
 
 获取 Jenkins 构建的 Console Log，支持正则搜索。
 

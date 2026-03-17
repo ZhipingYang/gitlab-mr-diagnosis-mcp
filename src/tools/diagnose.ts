@@ -208,43 +208,51 @@ export class MRDiagnosisTool {
   private generateRecommendations(result: MRDiagnosisResult): string[] {
     const recommendations: string[] = [];
 
-    // UT 失败建议
+    // UT 失败建议 - 保留所有文件路径,但精简格式
     if (result.failedTests.length > 0) {
       recommendations.push(
-        `发现 ${result.failedTests.length} 个测试用例失败，需要修复：`
+        `🔴 ${result.failedTests.length} 个测试失败,需修复以下文件:`
       );
-      result.failedTests.forEach((test, index) => {
-        recommendations.push(
-          `  ${index + 1}. ${test.testFile}`
-        );
-        recommendations.push(
-          `     测试: ${test.testSuite} › ${test.testName}`
-        );
+
+      // 去重文件路径 (同一个文件可能有多个失败测试)
+      const uniqueFiles = [...new Set(result.failedTests.map(t => t.testFile))];
+      uniqueFiles.forEach((file, index) => {
+        recommendations.push(`${index + 1}. ${file}`);
       });
+
       recommendations.push(
-        `建议: 运行 yarn test:no-watch <test-file> 本地调试`
+        `💡 运行: yarn test:no-watch <file>`
       );
     }
 
-    // 覆盖率建议
+    // 覆盖率建议 - 保留所有未覆盖文件
     if (!result.isDiffCoveragePassed) {
       const currentCoverage = result.summary.currentDiffCoverage;
       recommendations.push(
-        `Diff Coverage 未达标: ${currentCoverage}% < ${result.diffCoverageGate}%`
+        `🟡 Diff Coverage: ${currentCoverage}% < ${result.diffCoverageGate}%`
       );
+
+      // 列出所有未覆盖文件 (精简格式)
+      if (result.uncoveredFiles.length > 0) {
+        recommendations.push('需补充测试的文件:');
+        result.uncoveredFiles.forEach((file, index) => {
+          recommendations.push(`${index + 1}. ${file.filePath} (${file.coverage}%)`);
+        });
+      }
+
       recommendations.push(
-        `建议: 为新增代码添加单元测试以提高覆盖率`
+        `💡 为新增代码添加单元测试`
       );
     }
 
     // 阶段失败建议
     const failedStages = result.stages.filter(s => s.status === 'FAILURE');
     if (failedStages.length > 0 && result.failedTests.length === 0) {
-      recommendations.push(`失败的阶段: ${failedStages.map(s => s.name).join(', ')}`);
+      recommendations.push(`🔴 失败阶段: ${failedStages.map(s => s.name).join(', ')}`);
     }
 
     if (recommendations.length === 0) {
-      recommendations.push('✅ 所有检查通过！');
+      recommendations.push('✅ 所有检查通过');
     }
 
     return recommendations;

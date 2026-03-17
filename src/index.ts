@@ -176,6 +176,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await tool.diagnose(mrUrl);
         const formattedResult = tool.formatResult(result);
 
+        // 精简 JSON 数据: 只保留文件路径,去掉详细的测试名称和错误信息
+        const compactResult = {
+          ...result,
+          failedTests: result.failedTests.map(test => ({
+            testFile: test.testFile,
+            // 保留 testSuite 和 testName 用于定位具体测试
+            testSuite: test.testSuite,
+            testName: test.testName,
+            // 去掉冗长的错误信息 (errorType, errorMessage, expectedValue, receivedValue)
+          })),
+        };
+
         return {
           content: [
             {
@@ -184,7 +196,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
             {
               type: 'text',
-              text: '\n\n---\n📦 原始诊断数据 (JSON):\n' + JSON.stringify(result, null, 2),
+              text: '\n\n---\n📦 原始诊断数据 (JSON):\n' + JSON.stringify(compactResult, null, 2),
             },
           ],
         };

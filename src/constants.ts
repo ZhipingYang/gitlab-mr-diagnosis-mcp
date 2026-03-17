@@ -49,7 +49,7 @@ export const BUILD_ONLY_MAX_STAGES = 5;
 // ============================================================
 
 /** 匹配失败的测试文件路径 */
-export const REGEX_FAIL_PATTERN = /FAIL(?:\s+UT)?\s+(project\/[^\s]+\.test\.[tj]sx?)/g;
+export const REGEX_FAIL_PATTERN = /FAIL(?:\s+(?:UT|NODE))?\s+(project\/[^\s]+\.test(?:\.[a-z]+)*\.[tj]sx?)/g;
 
 /** 匹配测试用例名称 (支持时间戳前缀) */
 export const REGEX_TEST_NAME = /(?:\[[\d\-T:.Z]+\]\s*)?●\s+([^\n]+)/g;

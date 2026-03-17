@@ -28,7 +28,6 @@ export class ConsoleLogParser {
   parseFailedTests(log: string): FailedTestCase[] {
     const failedTests: FailedTestCase[] = [];
     const seenTests = new Set<string>();
-    const seenFiles = new Set<string>();
 
     // 重置正则的 lastIndex
     const failPattern = new RegExp(REGEX_FAIL_PATTERN.source, 'g');
@@ -37,15 +36,23 @@ export class ConsoleLogParser {
     while ((match = failPattern.exec(log)) !== null) {
       const testFile = match[1];
 
-      // 跳过已处理的文件
-      if (seenFiles.has(testFile)) {
-        continue;
-      }
-      seenFiles.add(testFile);
-
-      // 提取上下文日志
+      // 提取上下文日志 - 优化：限制到下一个 FAIL 标记之前，避免跨文件污染
       const startIndex = match.index;
-      const endIndex = Math.min(startIndex + FAILED_TEST_SEARCH_RANGE, log.length);
+
+      // 查找下一个 FAIL 标记的位置（从当前位置之后开始搜索）
+      const searchStart = startIndex + 10; // 跳过当前的 "FAIL" 字符串
+      const nextFailIndex = log.indexOf('FAIL', searchStart);
+
+      // 计算上下文结束位置：取 (下一个FAIL位置) 和 (固定范围) 中的较小值
+      let endIndex: number;
+      if (nextFailIndex > 0 && nextFailIndex > startIndex) {
+        // 如果找到下一个 FAIL，限制到它之前
+        endIndex = Math.min(nextFailIndex, startIndex + FAILED_TEST_SEARCH_RANGE);
+      } else {
+        // 如果没有下一个 FAIL，使用固定范围
+        endIndex = Math.min(startIndex + FAILED_TEST_SEARCH_RANGE, log.length);
+      }
+
       const contextLog = log.substring(startIndex, endIndex);
 
       // 解析测试用例

@@ -1,6 +1,6 @@
 {
   "name": "gitlab-mr-diagnosis-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MCP service for diagnosing GitLab Merge Request pipeline status",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -47,4 +47,3 @@
     "node": ">=18.0.0"
   }
 }
-

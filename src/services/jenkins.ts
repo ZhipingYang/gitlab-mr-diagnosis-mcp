@@ -190,17 +190,29 @@ export class JenkinsService {
    * 从 HTML Report 提取覆盖率统计数据（备用方案）
    * @param html - Coverage Report HTML 内容
    */
-  private extractCoverageStatsFromHtml(html: string): { diffCoverage: number; overallCoverage: number } | null {
+  private extractCoverageStatsFromHtml(html: string): {
+    diffCoverage: number;
+    overallCoverage: number;
+    diffLines: number;
+    coveredDiffLines: number;
+    uncoveredDiffLines: number;
+  } | null {
     // 从新格式的 HTML 中提取统计数据
     // 格式示例: "Diff statement lines coverage: 100% (0/0)"
     //          "Overall statement lines coverage: 61.3341% (4478/7301)"
-    const diffMatch = html.match(/Diff statement lines coverage:\s*([\d.]+)%/i);
+    const diffMatch = html.match(/Diff statement lines coverage:\s*([\d.]+)%\s*\((\d+)\/(\d+)\)/i);
     const overallMatch = html.match(/Overall statement lines coverage:\s*([\d.]+)%/i);
 
     if (diffMatch || overallMatch) {
+      const coveredDiffLines = diffMatch ? parseInt(diffMatch[2], 10) : 0;
+      const diffLines = diffMatch ? parseInt(diffMatch[3], 10) : 0;
+
       return {
         diffCoverage: diffMatch ? parseFloat(diffMatch[1]) : 0,
         overallCoverage: overallMatch ? parseFloat(overallMatch[1]) : 0,
+        diffLines,
+        coveredDiffLines,
+        uncoveredDiffLines: Math.max(diffLines - coveredDiffLines, 0),
       };
     }
 
@@ -217,11 +229,23 @@ export class JenkinsService {
     buildUrl: string,
     coverageThreshold: number = 90
   ): Promise<{
-    stats: { diffCoverage: number; overallCoverage: number } | null;
+    stats: {
+      diffCoverage: number;
+      overallCoverage: number;
+      diffLines: number;
+      coveredDiffLines: number;
+      uncoveredDiffLines: number;
+    } | null;
     uncoveredFiles: UncoveredFile[];
     isDiffCoveragePassed: boolean;
   }> {
-    let stats: { diffCoverage: number; overallCoverage: number } | null = null;
+    let stats: {
+      diffCoverage: number;
+      overallCoverage: number;
+      diffLines: number;
+      coveredDiffLines: number;
+      uncoveredDiffLines: number;
+    } | null = null;
     let uncoveredFiles: UncoveredFile[] = [];
 
     try {
@@ -265,4 +289,3 @@ export class JenkinsService {
 }
 
 export default JenkinsService;
-

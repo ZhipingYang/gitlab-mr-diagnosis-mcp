@@ -312,8 +312,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // 统计数据
           if (coverageData.stats) {
             result += '📈 Coverage 统计:\n';
-            result += `  Diff Coverage:    ${coverageData.stats.diffCoverage.toFixed(2)}% ${coverageData.isDiffCoveragePassed ? '✅' : '❌'}\n`;
-            result += `  Overall Coverage: ${coverageData.stats.overallCoverage.toFixed(2)}%\n\n`;
+            result += `  Artifact Diff Coverage:    ${coverageData.stats.diffCoverage.toFixed(2)}%\n`;
+            result += `  Artifact Overall Coverage: ${coverageData.stats.overallCoverage.toFixed(2)}%\n`;
+            result += `  Diff Lines: ${coverageData.stats.diffLines} | Covered: ${coverageData.stats.coveredDiffLines} | Uncovered: ${coverageData.stats.uncoveredDiffLines}\n`;
+            result += `  File-level Coverage Gate: ${coverageData.isDiffCoveragePassed ? '✅ 通过' : '❌ 失败'}\n\n`;
           } else {
             result += '⚠️ 无法从 HTML 中提取统计数据\n\n';
           }
@@ -398,4 +400,3 @@ async function main() {
 }
 
 main().catch(console.error);
-

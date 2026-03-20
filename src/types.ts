@@ -170,8 +170,8 @@ export interface DiagnosisSummary {
   skippedStages: number;
   /** 失败的测试用例数 */
   totalFailedTests: number;
-  /** 当前 Diff Coverage 百分比 */
-  currentDiffCoverage: number;
+  /** 当前 Diff Coverage 百分比（未解析时为 null） */
+  currentDiffCoverage: number | null;
 }
 
 /**
@@ -250,4 +250,3 @@ export interface DiagnosisConfig {
   /** Diff Coverage 阈值 (0-100) */
   diffCoverageGate: number;
 }
-

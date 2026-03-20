@@ -66,7 +66,7 @@ export class MRDiagnosisTool {
         failedStages: 0,
         skippedStages: 0,
         totalFailedTests: 0,
-        currentDiffCoverage: 0,
+        currentDiffCoverage: null,
       },
       recommendations: [],
     };
@@ -98,26 +98,37 @@ export class MRDiagnosisTool {
     result.buildInfo = buildInfo;
     result.stages = latestBuildComment.stages || [];
 
-    // Step 4: 获取 Console Log 并解析 UT 失败
-    let consoleLog = '';
-    try {
-      consoleLog = await this.jenkinsService.getConsoleLog(
-        buildInfo.consoleLogUrl
-      );
-    } catch (error) {
-      result.recommendations.push(`无法获取 Console Log: ${error}`);
+    const failedUTStages = result.stages.filter(
+      (stage) => this.isUTStage(stage) && stage.status === 'FAILURE'
+    );
+    const diffCoverageStage = this.findDiffCoverageStage(result.stages);
+
+    if (diffCoverageStage?.status === 'SUCCESS') {
+      result.isDiffCoveragePassed = true;
+    } else if (diffCoverageStage?.status === 'FAILURE') {
+      result.isDiffCoveragePassed = false;
     }
 
-    // Step 5: 解析 Console Log（只解析 UT 失败）
-    if (consoleLog) {
-      const logAnalysis = this.consoleLogParser.parseAll(consoleLog);
-      result.failedTests = logAnalysis.failedTests;
-    }
-
-    // Step 6: 从 artifact HTML 获取 Coverage 数据（统计 + 文件列表）
-    if (buildInfo.consoleLogUrl) {
+    // Step 4: 只有 UT stage 失败时才获取 Console Log 解析失败用例
+    if (failedUTStages.length > 0 && buildInfo.consoleLogUrl) {
+      let consoleLog = '';
       try {
-        // 从 consoleLogUrl 提取 buildUrl
+        consoleLog = await this.jenkinsService.getConsoleLog(
+          buildInfo.consoleLogUrl
+        );
+      } catch (error) {
+        result.recommendations.push(`无法获取 Console Log: ${error}`);
+      }
+
+      if (consoleLog) {
+        const logAnalysis = this.consoleLogParser.parseAll(consoleLog);
+        result.failedTests = logAnalysis.failedTests;
+      }
+    }
+
+    // Step 5: 只有 diffcoverage stage 失败时才解析 Coverage artifact 明细
+    if (diffCoverageStage?.status === 'FAILURE' && buildInfo.consoleLogUrl) {
+      try {
         const buildUrl = buildInfo.consoleLogUrl.replace('/consoleText', '');
         const artifactUrl = `${buildUrl}/artifact/coverage/Overall-Diff-Coverage-Report.html`;
 
@@ -126,43 +137,37 @@ export class MRDiagnosisTool {
           this.config.diffCoverageGate
         );
 
-        // 更新 Coverage 统计
         if (coverageData.stats) {
           result.coverageStats = [{
             type: 'overall',
-            diffLines: 0,
-            coveredDiffLines: 0,
-            uncoveredDiffLines: 0,
+            diffLines: coverageData.stats.diffLines,
+            coveredDiffLines: coverageData.stats.coveredDiffLines,
+            uncoveredDiffLines: coverageData.stats.uncoveredDiffLines,
             diffCoverage: coverageData.stats.diffCoverage,
             overallCoverage: coverageData.stats.overallCoverage,
           }];
         } else {
-          // 如果没有统计数据，添加警告
           result.recommendations.push(
-            '⚠️ 无法从 Coverage Report 中提取统计数据'
+            '⚠️ Diff Coverage stage 失败，但无法从 Coverage Report 中提取统计数据'
           );
           result.recommendations.push(
             `💡 请手动查看: ${artifactUrl}`
           );
         }
 
-        // 更新未覆盖文件列表
         result.uncoveredFiles = coverageData.uncoveredFiles;
-        result.isDiffCoveragePassed = coverageData.isDiffCoveragePassed;
       } catch (error) {
-        // 如果获取失败，添加详细错误信息到建议中
         const errorMsg = error instanceof Error ? error.message : String(error);
         const buildUrl = buildInfo.consoleLogUrl.replace('/consoleText', '');
         const artifactUrl = `${buildUrl}/artifact/coverage/Overall-Diff-Coverage-Report.html`;
 
         result.recommendations.push(
-          `⚠️ 无法获取 Coverage 详细数据: ${errorMsg}`
+          `⚠️ Diff Coverage stage 失败，但无法获取 Coverage 详细数据: ${errorMsg}`
         );
         result.recommendations.push(
           `💡 请手动查看 Coverage Report: ${artifactUrl}`
         );
 
-        // 记录错误日志（用于调试）
         console.error('[Coverage] Failed to get coverage data:', {
           buildUrl,
           artifactUrl,
@@ -175,7 +180,10 @@ export class MRDiagnosisTool {
     result.summary = this.calculateSummary(result);
 
     // 生成建议
-    result.recommendations = this.generateRecommendations(result);
+    result.recommendations = [
+      ...result.recommendations,
+      ...this.generateRecommendations(result),
+    ];
 
     return result;
   }
@@ -190,7 +198,7 @@ export class MRDiagnosisTool {
     const skippedStages = stages.filter(s => s.status === 'SKIPPED').length;
 
     const overallCoverage = result.coverageStats.find(s => s.type === 'overall');
-    const currentDiffCoverage = overallCoverage?.diffCoverage ?? 0;
+    const currentDiffCoverage = overallCoverage?.diffCoverage ?? null;
 
     return {
       totalStages: stages.length,
@@ -228,9 +236,13 @@ export class MRDiagnosisTool {
     // 覆盖率建议 - 保留所有未覆盖文件
     if (!result.isDiffCoveragePassed) {
       const currentCoverage = result.summary.currentDiffCoverage;
-      recommendations.push(
-        `🟡 Diff Coverage: ${currentCoverage}% < ${result.diffCoverageGate}%`
-      );
+      if (currentCoverage !== null) {
+        recommendations.push(
+          `🟡 Diff Coverage stage 失败（artifact 解析值: ${currentCoverage}%）`
+        );
+      } else {
+        recommendations.push('🟡 Diff Coverage stage 失败');
+      }
 
       // 列出所有未覆盖文件 (精简格式)
       if (result.uncoveredFiles.length > 0) {
@@ -332,14 +344,22 @@ export class MRDiagnosisTool {
       lines.push('📈 覆盖率统计:');
       const overall = result.coverageStats.find(s => s.type === 'overall');
       if (overall) {
-        const passIcon = result.isDiffCoveragePassed ? '✅' : '❌';
-        lines.push(`  Diff Coverage: ${overall.diffCoverage}% ${passIcon} (阈值: ${result.diffCoverageGate}%)`);
+        lines.push('  Pipeline Diffcoverage Stage: ❌ 失败');
+        lines.push(`  Artifact Diff Coverage: ${overall.diffCoverage}%`);
+        lines.push(`  Artifact Overall Coverage: ${overall.overallCoverage}%`);
         lines.push(`  Diff Lines: ${overall.diffLines} | Covered: ${overall.coveredDiffLines} | Uncovered: ${overall.uncoveredDiffLines}`);
-        if (overall.lineCoverage) {
-          lines.push(`  Line Coverage: ${overall.lineCoverage}%`);
-        }
       }
       lines.push('');
+    } else {
+      const diffCoverageStage = this.findDiffCoverageStage(result.stages);
+      if (diffCoverageStage) {
+        lines.push('📈 覆盖率统计:');
+        lines.push(`  Pipeline Diffcoverage Stage: ${this.getStatusIcon(diffCoverageStage.status)}`);
+        if (diffCoverageStage.status === 'SUCCESS') {
+          lines.push('  说明: 已按 pipeline 结果判定通过，未执行 coverage 明细解析');
+        }
+        lines.push('');
+      }
     }
 
     // Diff Coverage 未达标文件列表
@@ -374,7 +394,14 @@ export class MRDiagnosisTool {
     lines.push('📊 摘要:');
     lines.push(`  阶段: ${result.summary.passedStages}/${result.summary.totalStages} 通过`);
     lines.push(`  失败测试: ${result.summary.totalFailedTests} 个`);
-    lines.push(`  Diff Coverage: ${result.summary.currentDiffCoverage}%`);
+    if (result.summary.currentDiffCoverage !== null) {
+      lines.push(`  Diff Coverage: ${result.summary.currentDiffCoverage}%`);
+    } else {
+      const diffCoverageStage = this.findDiffCoverageStage(result.stages);
+      if (diffCoverageStage) {
+        lines.push(`  Diffcoverage Stage: ${this.getStatusIcon(diffCoverageStage.status)}`);
+      }
+    }
     lines.push('');
 
     // 建议
@@ -398,7 +425,17 @@ export class MRDiagnosisTool {
       default: return '❓ 未知';
     }
   }
+
+  private isUTStage(stage: StageStatus): boolean {
+    const name = stage.name.toLowerCase();
+    return name.includes(' ut') || name === 'ut';
+  }
+
+  private findDiffCoverageStage(stages: StageStatus[]): StageStatus | undefined {
+    return stages.find((stage) =>
+      stage.name.toLowerCase().includes('diffcoverage')
+    );
+  }
 }
 
 export default MRDiagnosisTool;
-

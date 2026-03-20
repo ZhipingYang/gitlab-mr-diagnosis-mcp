@@ -216,51 +216,55 @@ export class MRDiagnosisTool {
   private generateRecommendations(result: MRDiagnosisResult): string[] {
     const recommendations: string[] = [];
 
-    // UT 失败建议 - 保留所有文件路径,但精简格式
+    // UT 失败建议
     if (result.failedTests.length > 0) {
-      recommendations.push(
-        `🔴 ${result.failedTests.length} 个测试失败,需修复以下文件:`
-      );
-
-      // 去重文件路径 (同一个文件可能有多个失败测试)
       const uniqueFiles = [...new Set(result.failedTests.map(t => t.testFile))];
-      uniqueFiles.forEach((file, index) => {
-        recommendations.push(`${index + 1}. ${file}`);
-      });
-
       recommendations.push(
-        `💡 运行: yarn test:no-watch <file>`
+        `🔴 ${result.failedTests.length} 个测试失败 (${uniqueFiles.length} 个文件)`
       );
+      uniqueFiles.forEach((file, index) => {
+        recommendations.push(`  ${index + 1}. ${file}`);
+      });
+      recommendations.push(`💡 运行: yarn test:no-watch <file>`);
     }
 
-    // 覆盖率建议 - 保留所有未覆盖文件
+    // Coverage 建议
     if (!result.isDiffCoveragePassed) {
       const currentCoverage = result.summary.currentDiffCoverage;
+      const gate = result.diffCoverageGate;
+
       if (currentCoverage !== null) {
+        const gap = (gate - currentCoverage).toFixed(2);
         recommendations.push(
-          `🟡 Diff Coverage stage 失败（artifact 解析值: ${currentCoverage}%）`
+          `🟡 Coverage 不足: ${currentCoverage}% < ${gate}% (差 ${gap}%)`
         );
+
+        // 列出未覆盖文件
+        if (result.uncoveredFiles.length > 0) {
+          const overallStats = result.coverageStats.find(s => s.type === 'overall');
+          const uncoveredLines = overallStats?.uncoveredDiffLines || 0;
+
+          recommendations.push(
+            `  需覆盖 ${uncoveredLines} 行代码 (${result.uncoveredFiles.length} 个文件):`
+          );
+          result.uncoveredFiles.forEach((file, index) => {
+            recommendations.push(`  ${index + 1}. ${file.filePath} (${file.coverage}%)`);
+          });
+        }
       } else {
-        recommendations.push('🟡 Diff Coverage stage 失败');
+        recommendations.push('🟡 Coverage 未通过 (详情见 Pipeline)');
       }
-
-      // 列出所有未覆盖文件 (精简格式)
-      if (result.uncoveredFiles.length > 0) {
-        recommendations.push('需补充测试的文件:');
-        result.uncoveredFiles.forEach((file, index) => {
-          recommendations.push(`${index + 1}. ${file.filePath} (${file.coverage}%)`);
-        });
-      }
-
-      recommendations.push(
-        `💡 为新增代码添加单元测试`
-      );
     }
 
-    // 阶段失败建议
+    // 其他失败阶段
     const failedStages = result.stages.filter(s => s.status === 'FAILURE');
-    if (failedStages.length > 0 && result.failedTests.length === 0) {
-      recommendations.push(`🔴 失败阶段: ${failedStages.map(s => s.name).join(', ')}`);
+    const nonTestStages = failedStages.filter(s =>
+      !this.isUTStage(s) && s.name !== 'diffcoverage'
+    );
+    if (nonTestStages.length > 0) {
+      recommendations.push(
+        `🔴 其他失败: ${nonTestStages.map(s => s.name).join(', ')}`
+      );
     }
 
     if (recommendations.length === 0) {
@@ -340,67 +344,50 @@ export class MRDiagnosisTool {
     }
 
     // 覆盖率统计
-    if (result.coverageStats.length > 0) {
-      lines.push('📈 覆盖率统计:');
-      const overall = result.coverageStats.find(s => s.type === 'overall');
-      if (overall) {
-        lines.push('  Pipeline Diffcoverage Stage: ❌ 失败');
-        lines.push(`  Artifact Diff Coverage: ${overall.diffCoverage}%`);
-        lines.push(`  Artifact Overall Coverage: ${overall.overallCoverage}%`);
-        lines.push(`  Diff Lines: ${overall.diffLines} | Covered: ${overall.coveredDiffLines} | Uncovered: ${overall.uncoveredDiffLines}`);
+    const diffCoverageStage = this.findDiffCoverageStage(result.stages);
+    if (diffCoverageStage) {
+      lines.push('📈 Coverage:');
+
+      if (result.coverageStats.length > 0) {
+        // Coverage 失败，显示详细数据
+        const overall = result.coverageStats.find(s => s.type === 'overall');
+        if (overall) {
+          const gate = result.diffCoverageGate;
+          const gap = (gate - overall.diffCoverage).toFixed(2);
+          lines.push(`  ❌ Diff Coverage: ${overall.diffCoverage}% (要求 ≥ ${gate}%, 差 ${gap}%)`);
+          lines.push(`  📊 Diff Lines: ${overall.diffLines} 行 (覆盖 ${overall.coveredDiffLines}, 未覆盖 ${overall.uncoveredDiffLines})`);
+          lines.push(`  📊 Overall Coverage: ${overall.overallCoverage}%`);
+        }
+      } else if (diffCoverageStage.status === 'SUCCESS') {
+        // Coverage 通过，简洁显示
+        lines.push(`  ✅ Diff Coverage: 通过 (≥ ${result.diffCoverageGate}%)`);
+      } else {
+        // Coverage 失败但无详细数据
+        lines.push(`  ❌ Diff Coverage: 未通过`);
       }
       lines.push('');
-    } else {
-      const diffCoverageStage = this.findDiffCoverageStage(result.stages);
-      if (diffCoverageStage) {
-        lines.push('📈 覆盖率统计:');
-        lines.push(`  Pipeline Diffcoverage Stage: ${this.getStatusIcon(diffCoverageStage.status)}`);
-        if (diffCoverageStage.status === 'SUCCESS') {
-          lines.push('  说明: 已按 pipeline 结果判定通过，未执行 coverage 明细解析');
-        }
-        lines.push('');
-      }
     }
 
-    // Diff Coverage 未达标文件列表
+    // 未达标文件列表
     if (!result.isDiffCoveragePassed && result.uncoveredFiles.length > 0) {
-      // 判断是 Diff Coverage 还是 Overall Coverage
-      const isDiffCoverage = result.uncoveredFiles.some(f => f.filePath.endsWith('.ts') || f.filePath.endsWith('.tsx'));
-
-      if (isDiffCoverage) {
-        lines.push('📁 Diff Coverage 未达标文件:');
-        lines.push('   注: 以下文件的新增/修改代码覆盖率低于阈值，需要补充单元测试');
-      } else {
-        lines.push('📁 低覆盖率模块:');
-        lines.push('   注: 以下模块整体覆盖率较低，可能需要补充单元测试');
-      }
-      lines.push('');
+      lines.push(`📁 未覆盖文件 (${result.uncoveredFiles.length} 个):`);
       result.uncoveredFiles.slice(0, 10).forEach((file, index) => {
-        const coverageStr = `${file.coverage}%`.padStart(7);
-        lines.push(`  ${index + 1}. ${file.filePath}`);
-        if (file.uncoveredLines > 0) {
-          lines.push(`     覆盖率: ${coverageStr} | 未覆盖: ${file.uncoveredLines} 行`);
-        } else {
-          lines.push(`     Diff Coverage: ${coverageStr}`);
-        }
+        lines.push(`  ${index + 1}. ${file.filePath} (${file.coverage}%)`);
       });
       if (result.uncoveredFiles.length > 10) {
-        lines.push(`  ... 还有 ${result.uncoveredFiles.length - 10} 个文件`);
+        lines.push(`  ... 还有 ${result.uncoveredFiles.length - 10} 个`);
       }
       lines.push('');
     }
 
     // 摘要
     lines.push('📊 摘要:');
-    lines.push(`  阶段: ${result.summary.passedStages}/${result.summary.totalStages} 通过`);
-    lines.push(`  失败测试: ${result.summary.totalFailedTests} 个`);
+    lines.push(`  总阶段: ${result.summary.totalStages} (通过 ${result.summary.passedStages}, 失败 ${result.summary.failedStages}, 跳过 ${result.summary.skippedStages})`);
+    if (result.summary.totalFailedTests > 0) {
+      lines.push(`  失败测试: ${result.summary.totalFailedTests} 个`);
+    }
     if (result.summary.currentDiffCoverage !== null) {
       lines.push(`  Diff Coverage: ${result.summary.currentDiffCoverage}%`);
-    } else {
-      const diffCoverageStage = this.findDiffCoverageStage(result.stages);
-      if (diffCoverageStage) {
-        lines.push(`  Diffcoverage Stage: ${this.getStatusIcon(diffCoverageStage.status)}`);
-      }
     }
     lines.push('');
 
